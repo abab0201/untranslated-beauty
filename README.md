@@ -6,6 +6,9 @@ An AI-generated translation device for beauty that humans may not yet have the o
 
 🔗 デモ: GitHub Pages を有効にすると [https://abab0201.github.io/untranslated-beauty/](https://abab0201.github.io/untranslated-beauty/) で動作します(依存ライブラリなし、index.html 単体)。
 
+人間の意図が入ったモノ　[https://abab0201.github.io/untranslated-beauty/Attractor.html](https://abab0201.github.io/untranslated-beauty/Attractor.html)
+
+
 ---
 
 ## これは何か
