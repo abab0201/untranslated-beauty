@@ -16,100 +16,54 @@
     width: 100%;
     height: 100%;
     background: var(--ink);
-    color: var(--bone);
-    font-family: "Courier New", monospace;
     overflow: hidden; /* スクロールバーを隠す */
   }
   canvas {
     display: block;
     width: 100%;
     height: 100%;
-  }
-  .overlay {
-    position: absolute;
-    top: 0; left: 0; width: 100%; height: 100%;
-    pointer-events: none;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 2rem;
-    background: radial-gradient(circle at center, transparent 0%, rgba(5,6,8,0.4) 100%);
-  }
-  .header h1 {
-    font-family: "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
-    font-size: 1.5rem;
-    font-weight: 500;
-    letter-spacing: 0.1em;
-    margin-bottom: 0.5rem;
-  }
-  .header h1 em {
-    font-style: normal;
-    color: var(--accent);
-    font-family: "Courier New", monospace;
-    font-size: 1rem;
-    letter-spacing: 0.2em;
-    margin-left: 10px;
-  }
-  .desc {
-    font-size: 0.75rem;
-    color: var(--dim);
-    letter-spacing: 0.15em;
-    max-width: 400px;
-    line-height: 1.8;
-  }
-  .footer {
-    font-size: 0.7rem;
-    letter-spacing: 0.2em;
-    color: var(--dim);
-    display: flex;
-    justify-content: space-between;
-  }
-  #params-display {
-    color: var(--accent);
+    cursor: crosshair; /* カオスを生み出すターゲット風に */
   }
 </style>
 </head>
 <body>
 
-  <canvas id="c"></canvas>
-
-  <div class="overlay">
-    <div class="header">
-      <h1>奇妙な引力 <em>CLIFFORD ATTRACTOR</em></h1>
-      <p class="desc">
-        無数の点が数式に従い永遠に軌道を描き続ける。<br>
-        パラメータは微小な揺らぎを持ち、<br>
-        この形は二度と同じ姿を繰り返すことはない。
-      </p>
-    </div>
-    <div class="footer">
-      <span>LIVE SPECIMEN — DETERMINISTIC CHAOS</span>
-      <span id="params-display">a: 0.000, b: 0.000, c: 0.000, d: 0.000</span>
-    </div>
-  </div>
+  <canvas id="c" title="クリックした場所からカオスを生み出す"></canvas>
 
 <script>
   const canvas = document.getElementById('c');
-  const ctx = canvas.getContext('2d', { alpha: false }); // パフォーマンス最適化
-  const paramsDisplay = document.getElementById('params-display');
+  const ctx = canvas.getContext('2d', { alpha: false });
 
   let width, height, cx, cy, scale;
 
   // アニメーション設定
   const PARTICLE_COUNT = 15000;
-  const TRAIL_FADE = 0.03; // 軌跡の長さ（少し長く残るように調整）
-  const TIME_SPEED = 0.0005; // パラメータが変化する速度
-  const FLOW_SPEED = 0.02; // ★追加：パーティクルの移動速度（滑らかさ）
+  const TRAIL_FADE = 0.04; 
+  const TIME_SPEED = 0.0005; 
+  
+  // 慣性力学のための設定
+  const FLOW_SPEED = 0.06; // 移動の基本速度
+  const FRICTION = 0.95;   // 慣性の強さ（1に近いほど滑り続ける）
+  const FORCE = 0.05;      // アトラクターの引力が与える影響力
+  const BOUNCE = -0.9;     // 壁に当たった時の反発係数
 
-  // パーティクル配列
   let particles = [];
+  let baseA, baseB, baseC, baseD;
+  let baseHue = 210; // ★追加：世界全体のベースカラー
+  
+  // カオスの発生源（初期は中央）
+  let originX = 0;
+  let originY = 0;
 
-  // ★変更：ページを更新するたびに全く異なるパラメータをランダムに生成する
-  // (-2.0 から 2.0 の範囲でランダムな値を設定)
-  const baseA = (Math.random() - 0.5) * 4;
-  const baseB = (Math.random() - 0.5) * 4;
-  const baseC = (Math.random() - 0.5) * 4;
-  const baseD = (Math.random() - 0.5) * 4;
+  // パラメータをランダムに設定する関数
+  function randomizeParams() {
+    baseA = (Math.random() - 0.5) * 4;
+    baseB = (Math.random() - 0.5) * 4;
+    baseC = (Math.random() - 0.5) * 4;
+    baseD = (Math.random() - 0.5) * 4;
+    baseHue = Math.random() * 360; // ★追加：クリックごとにベースの色相をランダムに
+  }
+  randomizeParams();
 
   // キャンバスサイズの初期化とリサイズ処理
   function resize() {
@@ -119,102 +73,152 @@
     canvas.height = height;
     cx = width / 2;
     cy = height / 2;
-    // 画面サイズに合わせてスケールを調整
     scale = Math.min(width, height) / 6; 
     ctx.fillStyle = '#050608';
     ctx.fillRect(0, 0, width, height);
+    
+    originX = 0;
+    originY = 0;
+    initParticles();
   }
   window.addEventListener('resize', resize);
-  resize();
 
   // パーティクルの初期化
   function initParticles() {
     particles = [];
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       particles.push({
-        x: (Math.random() - 0.5) * 4,
-        y: (Math.random() - 0.5) * 4,
-        colorOffset: Math.random() // 色のばらつき用
+        x: originX + (Math.random() - 0.5) * 0.5,
+        y: originY + (Math.random() - 0.5) * 0.5,
+        vx: (Math.random() - 0.5) * 4, // 初期速度（少し弾ける）
+        vy: (Math.random() - 0.5) * 4,
+        colorOffset: (Math.random() - 0.5) * 80 // ★追加：粒子ごとの固有の色ノイズ
       });
     }
   }
-  initParticles();
 
-  // ★変更：時間の初期値もランダムにして、揺らぎのスタート地点を毎回変える
+  // クリックイベント：クリック地点を中心に爆発するように再配置
+  canvas.addEventListener('click', (e) => {
+    randomizeParams();
+    
+    // クリックした画面座標を、数式空間の座標に変換
+    originX = (e.clientX - cx) / scale;
+    originY = (e.clientY - cy) / scale;
+    
+    // 画面を一度クリア
+    ctx.fillStyle = '#050608';
+    ctx.fillRect(0, 0, width, height);
+    
+    // パーティクルをクリック地点に集め、四方八方に弾け飛ぶ速度を与える
+    particles.forEach(p => {
+      p.x = originX + (Math.random() - 0.5) * 0.1;
+      p.y = originY + (Math.random() - 0.5) * 0.1;
+      const angle = Math.random() * Math.PI * 2;
+      const power = Math.random() * 20; // 爆発の勢い
+      p.vx = Math.cos(angle) * power;
+      p.vy = Math.sin(angle) * power;
+      p.colorOffset = (Math.random() - 0.5) * 80; // ★追加：爆発時に色ノイズを再生成
+    });
+  });
+
   let time = Math.random() * 1000;
+  resize();
 
   // 描画ループ
   function draw() {
     time += TIME_SPEED;
 
-    // パラメータを時間経過とともに緩やかに変化させる（モーフィング）
-    const a = baseA + Math.sin(time * 1.1) * 0.3;
-    const b = baseB + Math.cos(time * 0.8) * 0.3;
-    const c = baseC + Math.sin(time * 1.3) * 0.3;
-    const d = baseD + Math.cos(time * 0.9) * 0.3;
+    // パラメータの揺らぎを大きくし、形がよりダイナミックに崩れては再構成されるようにする
+    const a = baseA + Math.sin(time * 1.1) * 0.6;
+    const b = baseB + Math.cos(time * 0.8) * 0.6;
+    const c = baseC + Math.sin(time * 1.3) * 0.6;
+    const d = baseD + Math.cos(time * 0.9) * 0.6;
 
-    // UIのパラメータ表示を更新
-    paramsDisplay.textContent = `a: ${a.toFixed(3)}, b: ${b.toFixed(3)}, c: ${c.toFixed(3)}, d: ${d.toFixed(3)}`;
-
-    // 残像（軌跡）を作るために、半透明の黒で画面を塗りつぶす
     ctx.fillStyle = `rgba(5, 6, 8, ${TRAIL_FADE})`;
     ctx.fillRect(0, 0, width, height);
-
-    // 光の重なりを表現するためのブレンドモード
     ctx.globalCompositeOperation = 'lighter';
+
+    // 画面の端（数式空間での座標境界）を計算
+    const minX = -cx / scale;
+    const maxX = (width - cx) / scale;
+    const minY = -cy / scale;
+    const maxY = (height - cy) / scale;
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       let p = particles[i];
 
-      // 前回の座標（画面上）
+      let isWarped = false;
+      // 収束を防ぐための新陳代謝（一定確率で画面のランダムな位置に再配置）
+      if (Math.random() < 0.002) { 
+        p.x = (Math.random() - 0.5) * (width / scale) * 1.5;
+        p.y = (Math.random() - 0.5) * (height / scale) * 1.5;
+        p.vx = (Math.random() - 0.5) * 2;
+        p.vy = (Math.random() - 0.5) * 2;
+        p.colorOffset = (Math.random() - 0.5) * 80; // ★追加：ワープ時にも色ノイズを付与
+        isWarped = true;
+      }
+
       const oldScreenX = cx + p.x * scale;
       const oldScreenY = cy + p.y * scale;
 
-      // Clifford Attractor の数式を「速度（風の向き）」として扱う
-      const vx = Math.sin(a * p.y) + c * Math.cos(a * p.x);
-      const vy = Math.sin(b * p.x) + d * Math.cos(b * p.y);
+      // 数式から導き出される「目標の速度（風の向き）」に微小なノイズを加える（線が完全に重なるのを防ぐ）
+      const targetVx = Math.sin(a * p.y) + c * Math.cos(a * p.x) + (Math.random() - 0.5) * 0.08;
+      const targetVy = Math.sin(b * p.x) + d * Math.cos(b * p.y) + (Math.random() - 0.5) * 0.08;
 
-      // 座標を滑らかに更新（流体的な移動）
-      p.x += vx * FLOW_SPEED;
-      p.y += vy * FLOW_SPEED;
+      // 現在の速度に、目標の速度を少しずつ混ぜる（慣性の働き）
+      p.vx = p.vx * FRICTION + targetVx * FORCE;
+      p.vy = p.vy * FRICTION + targetVy * FORCE;
 
-      // 新しい座標（画面上）
+      // 位置を更新
+      p.x += p.vx * FLOW_SPEED;
+      p.y += p.vy * FLOW_SPEED;
+
+      // === 画面端での跳ね返り（バウンド）処理 ===
+      if (p.x < minX) {
+        p.x = minX;
+        p.vx *= BOUNCE;
+      } else if (p.x > maxX) {
+        p.x = maxX;
+        p.vx *= BOUNCE;
+      }
+      
+      if (p.y < minY) {
+        p.y = minY;
+        p.vy *= BOUNCE;
+      } else if (p.y > maxY) {
+        p.y = maxY;
+        p.vy *= BOUNCE;
+      }
+
       const newScreenX = cx + p.x * scale;
       const newScreenY = cy + p.y * scale;
 
-      // 速度（画面上の実際の移動距離）に基づいて色を決定
-      const dx = newScreenX - oldScreenX;
-      const dy = newScreenY - oldScreenY;
-      const speed = Math.sqrt(dx * dx + dy * dy);
-      
-      // 動的に色を変化させる（青系からゴールド系へ）
-      const hue = 200 - speed * 15 + Math.sin(time) * 20; 
-      const lightness = Math.min(70, 20 + speed * 10);
-      const alpha = 0.4;
+      // ワープした瞬間は線を引かない（画面を横切る不自然な直線を防ぐ）
+      if (!isWarped) {
+        // 現在の速度（ベクトル量）
+        const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        
+        // ★変更：ベースカラー + 速度変化 + 時間揺らぎ + 粒子固有のノイズを融合
+        const hue = baseHue - Math.min(speed * 15, 50) + Math.sin(time) * 20 + p.colorOffset; 
+        const lightness = Math.min(75, 25 + speed * 10);
+        
+        // ★追加：描画の瞬間にも彩度(Saturation)に微細なノイズを混ぜる
+        const saturation = 70 + (Math.random() - 0.5) * 20; 
+        
+        ctx.strokeStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, 0.45)`;
+        ctx.lineWidth = 1;
 
-      ctx.strokeStyle = `hsla(${hue}, 60%, ${lightness}%, ${alpha})`;
-      ctx.lineWidth = 1;
-
-      // 線を描画
-      ctx.beginPath();
-      ctx.moveTo(oldScreenX, oldScreenY);
-      ctx.lineTo(newScreenX, newScreenY);
-      ctx.stroke();
-
-      // 画面外に飛び出た場合、またはランダムな確率で中心付近にリセット
-      if (Math.random() < 0.001 || p.x < -8 || p.x > 8 || p.y < -8 || p.y > 8) {
-        p.x = (Math.random() - 0.5) * 4;
-        p.y = (Math.random() - 0.5) * 4;
+        ctx.beginPath();
+        ctx.moveTo(oldScreenX, oldScreenY);
+        ctx.lineTo(newScreenX, newScreenY);
+        ctx.stroke();
       }
     }
 
-    // ブレンドモードを元に戻す
     ctx.globalCompositeOperation = 'source-over';
-
     requestAnimationFrame(draw);
   }
 
-  // アニメーション開始
   draw();
 </script>
 </body>
