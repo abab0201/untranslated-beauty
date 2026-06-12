@@ -4,7 +4,7 @@
 
 An AI-generated translation device for beauty that humans may not yet have the organs to perceive.
 
-🔗 デモ: GitHub Pages を有効にすると `https://<username>.github.io/untranslated-beauty/` で動作します(依存ライブラリなし、index.html 単体)。
+🔗 デモ: GitHub Pages を有効にすると `[https://<username>.github.io/untranslated-beauty](https://abab0201.github.io/untranslated-beauty/)` で動作します(依存ライブラリなし、index.html 単体)。
 
 ---
 
